@@ -1,0 +1,179 @@
+package com.junj.utils
+
+import com.junj.sampleIntervalMs
+import com.junj.timeStamp
+import java.io.File
+
+fun saveCsv() {
+    saveLaunchResultsToCsv(
+        launchApplicationResult,
+        File("../logs/$timeStamp/launch.csv")
+    )
+    saveSampleResultsToCsv(
+        sampleResults,
+        File("../logs/$timeStamp/sample.csv")
+    )
+}
+
+fun saveLaunchResultsToCsv(results: List<LaunchApplicationItem>, outputFile: File, ) {
+    outputFile.parentFile?.mkdirs()
+
+    outputFile.bufferedWriter(Charsets.UTF_8).use { writer ->
+        writer.appendLine(
+            listOf(
+                "amStartRound",
+                "amStartAppName",
+                "amStartLaunchState",
+                "amStartTotalTime(ms)",
+                "amStartWaitTime(ms)",
+                "amStartStatus",
+                "jankyFrames(%)",
+                "p50RenderLat(ms)",
+                "p90RenderLat(ms)",
+                "p95RenderLat(ms)",
+                "p99RenderLat(ms)",
+                "totalPss(KB)",
+            ).joinToString(",")
+        )
+
+        results.forEach { item ->
+            writer.appendLine(
+                listOf(
+                    item.amStartRound,
+                    item.amStartAppName,
+                    item.amStartLaunchState,
+                    item.amStartTotalTime,
+                    item.amStartWaitTime,
+                    item.amStartStatus,
+                    item.dumpsysGfxInfoJankyFrames,
+                    item.dumpsysGfxInfoP50RenderLat,
+                    item.dumpsysGfxInfoP90RenderLat,
+                    item.dumpsysGfxInfoP95RenderLat,
+                    item.dumpsysGfxInfoP99RenderLat,
+                    item.dumpsysMemInfoTotalPss,
+                ).joinToString(",") { value ->
+                    escapeCsv(value.toString())
+                }
+            )
+        }
+    }
+}
+
+fun escapeCsv(value: String): String {
+    val escaped = value.replace("\"", "\"\"")
+    return if (
+        value.contains(',') ||
+        value.contains('"') ||
+        value.contains('\n') ||
+        value.contains('\r')
+    ) {
+        "\"$escaped\""
+    } else {
+        escaped
+    }
+}
+
+fun saveSampleResultsToCsv(results: List<SamplingItem>, outputFile: File, ) {
+    outputFile.parentFile?.mkdirs()
+
+    outputFile.bufferedWriter(Charsets.UTF_8).use { writer ->
+        writer.appendLine(
+            listOf(
+                "sampleStamp",
+                "memTotal",
+                "memFree",
+                "memAvailable",
+                "swapTotal",
+                "swapFree",
+                "swapCached",
+                "psiSome",
+                "psiFull",
+                "vmstatR/runnableProcesses",
+                "vmstatB/blockedProcesses",
+                "vmstatSwpd/swapUsed(KB)",
+                "vmstatFree/freeMemory(KB)",
+                "vmstatBuff/bufferMemory(KB)",
+                "vmstatCache/cacheMemory(KB)",
+                "vmstatSi/swapInBw(KB/s)",
+                "vmstatSo/swapOutBw(KB/s)",
+                "vmstatBi/blockInput(KB/s)",
+                "vmstatBo/blockOutput(KB/s)",
+                "vmstatIn/Interrupts(time/s)",
+                "vmstatCs/contextSwitches(time/s)",
+                "vmstatUs/userCpuTime(%)",
+                "vmstatSy/kernelCpuTime(%)",
+                "vmstatId/idleCpuTime(%)",
+                "vmstatWa/waitIoCpuTime(%)",
+                "bigTemp",
+                "midTemp",
+                "littleTemp",
+                "socThermTemp",
+                "virtualSkinTemp",
+                "zramOrigDataSize",
+                "zramComprDataSize",
+                "zramMemUsedTotal",
+                "zramMemUsedMax",
+                "zramBdCount",
+                "zramBdReads",
+                "zramBdWrites",
+                "zramBdReadBw(KB/s)",
+                "zramBdWriteBw(KB/s)",
+                "zswapPoolLimitHit",
+                "zswapWrittenBackPages",
+                "zswapWriteBw(KB/s)",
+            ).joinToString(",")
+        )
+
+        results.forEachIndexed { index, item ->
+            writer.appendLine(
+                listOf(
+                    item.sampleStamp,
+                    item.meminfoMemTotal,
+                    item.meminfoMemFree,
+                    item.meminfoMemAvailable,
+                    item.meminfoSwapTotal,
+                    item.meminfoSwapFree,
+                    item.meminfoSwapCached,
+                    item.psiSome,
+                    item.psiFull,
+                    item.vmstatR,
+                    item.vmstatB,
+                    item.vmstatSwpd,
+                    item.vmstatFree,
+                    item.vmstatBuff,
+                    item.vmstatCache,
+                    item.vmstatSi,
+                    item.vmstatSo,
+                    item.vmstatBi,
+                    item.vmstatBo,
+                    item.vmstatIn,
+                    item.vmstatCs,
+                    item.vmstatUs,
+                    item.vmstatSy,
+                    item.vmstatId,
+                    item.vmstatWa,
+                    item.bigTemp,
+                    item.midTemp,
+                    item.littleTemp,
+                    item.socThermTemp,
+                    item.virtualSkinTemp,
+                    item.zramOrigDataSize,
+                    item.zramComprDataSize,
+                    item.zramMemUsedTotal,
+                    item.zramMemUsedMax,
+                    item.zramBdCount,
+                    item.zramBdReads,
+                    item.zramBdWrites,
+                    if (index == 0) item.zramBdReads * 4 * 1024 / sampleIntervalMs else (item.zramBdReads - results[index - 1].zramBdReads) * 4 * 1024 / sampleIntervalMs,
+                    if (index == 0) item.zramBdWrites * 4 * 1024 / sampleIntervalMs else (item.zramBdWrites - results[index - 1].zramBdWrites) * 4 * 1024 / sampleIntervalMs,
+                    item.zswapPoolLimitHit,
+                    item.zswapWrittenBackPages,
+                    if (index == 0) (item.zswapPoolLimitHit + item.zswapWrittenBackPages) * 4 * 1024 / sampleIntervalMs
+                    else (item.zswapPoolLimitHit + item.zswapWrittenBackPages - results[index - 1].zswapPoolLimitHit - results[index - 1].zswapWrittenBackPages) * 4 * 1024 / sampleIntervalMs
+                ).joinToString(",") { value->
+                    escapeCsv(value.toString())
+                }
+            )
+        }
+    }
+}
