@@ -14,6 +14,7 @@ import com.junj.metrics.MetricsCollector
 import com.junj.metrics.SamplingJob
 import com.junj.output.ExperimentOutputPaths
 import com.junj.output.csv.saveCsv
+import com.junj.output.logging.CommandDiagnostics
 import com.junj.output.logging.LogType
 import com.junj.output.logging.Logger
 import com.junj.output.reporting.SummaryReporter
@@ -26,6 +27,7 @@ fun main(args: Array<String>) = runBlocking {
     val config = parseArgs(args)
     val output = ExperimentOutputPaths(config.outputDirectory)
     output.create()
+    CommandDiagnostics.attach(output.directory)
     val logger = Logger(output.directory)
     val results = ExperimentResults()
     val apps = globalAppInfos.filter { it.name in appNameSet[config.appSetNumber] }
@@ -67,6 +69,10 @@ fun main(args: Array<String>) = runBlocking {
             logsPath = "logs/${config.timestamp}/*.log",
         )
         SummaryReporter(logger).report(summary)
+        if (results.samples.isEmpty()) {
+            logger.log(LogType.SUMMARY, "no samples collected: check the sampling error above")
+        }
+        CommandDiagnostics.printSummary()
         logger.log(LogType.SUMMARY, "Test round runtime: ${elapsedNs / 1_000_000_000}s")
         saveCsv(results, output, config.sampleIntervalMs)
         logger.close()

@@ -8,6 +8,7 @@ import com.junj.domain.launch.LaunchApplicationItem
 import com.junj.metrics.parser.CommandType
 import com.junj.metrics.parser.ResultField
 import com.junj.metrics.parser.regexFindField
+import com.junj.output.logging.CommandDiagnostics
 import com.junj.output.logging.LogType
 import com.junj.output.logging.Logger
 import java.lang.Thread.sleep
@@ -34,6 +35,14 @@ class ExperimentRunner(
             val nextLaunchNs = launchStartNs + config.launchIntervalMs * 1_000_000L
             adb.rootShell("dumpsys gfxinfo ${app.packageName} reset")
             val amStartResult = adb.shell("am start -W -n ${app.componentName}")
+            if (regexFindField(CommandType.AM_START, ResultField.LAUNCH_STATE, amStartResult.output) == null) {
+                // 没回 LaunchState 基本就是应用没装、或组件名和这台机器对不上，把原始输出留档。
+                CommandDiagnostics.record(
+                    "am-start/no-launch-state",
+                    "am start -W -n ${app.componentName}",
+                    amStartResult.output,
+                )
+            }
             sleepUntil(launchStartNs + config.collectDelayMs * 1_000_000L)
 
             val result = LaunchApplicationItem(

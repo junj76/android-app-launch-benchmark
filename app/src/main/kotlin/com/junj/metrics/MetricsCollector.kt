@@ -9,6 +9,7 @@ import com.junj.metrics.parser.parseVmstat
 import com.junj.metrics.parser.parseZramBdStatResult
 import com.junj.metrics.parser.parseZramMmStatResult
 import com.junj.metrics.parser.regexFindField
+import com.junj.output.logging.CommandDiagnostics
 
 class MetricsCollector(
     private val adb: AdbExecutor = ProcessAdbExecutor,
@@ -16,9 +17,30 @@ class MetricsCollector(
     fun collect(sampleStamp: Int): SamplingItem {
         val memInfo = adb.shell("cat /proc/meminfo")
         val pressureMemory = adb.rootShell("cat /proc/pressure/memory")
-        val vmstat = parseVmstat(adb.rootShell("vmstat").output)
+
+        val vmstatResult = adb.rootShell("vmstat")
+        val vmstat = parseVmstat(vmstatResult.output)
+        if (vmstat == null) {
+            // vmstat 跑成功了但解析不出数字：多半是这台机器的 vmstat 列数/表头和解析规则不一致。
+            CommandDiagnostics.record("vmstat/unparsed", "vmstat", vmstatResult.output)
+        }
+
         val thermal = adb.rootShell("dumpsys thermalservice")
-        val zramMm = parseZramMmStatResult(adb.rootShell("cat /sys/block/zram0/mm_stat").output)
+        if (regexFindField(CommandType.DUMPSYS_THERMALSERVICE, ResultField.BIG_TEMP, thermal.output) == null) {
+            // 温度一项都解析不到：多半是这台 ROM 的 dumpsys 输出格式（或温区名字）不一样。
+            CommandDiagnostics.record(
+                "thermalservice/no-temps",
+                "dumpsys thermalservice",
+                keepFromHalSection(thermal.output),
+            )
+        }
+
+        val zramMmStat = adb.rootShell("cat /sys/block/zram0/mm_stat")
+        val zramMm = parseZramMmStatResult(zramMmStat.output)
+        if (zramMm == null) {
+            CommandDiagnostics.record("zram-mm_stat/unparsed", "cat /sys/block/zram0/mm_stat", zramMmStat.output)
+        }
+
         val zramBd = parseZramBdStatResult(adb.rootShell("cat /sys/block/zram0/bd_stat").output)
 
         return SamplingItem(
@@ -74,4 +96,13 @@ class MetricsCollector(
 
     private fun readRootLong(command: String): Long =
         adb.rootShell(command).output.trim().toLongOrNull() ?: 0L
+
+    /**
+     * 记录 thermalservice 原始输出时，从 "Current temperatures" 这段开始截，
+     * 免得前面一大堆无关内容把真正需要看的温度段挤出记录范围。
+     */
+    private fun keepFromHalSection(output: String): String {
+        val index = output.indexOf("Current temperatures")
+        return if (index >= 0) output.substring(index) else output
+    }
 }

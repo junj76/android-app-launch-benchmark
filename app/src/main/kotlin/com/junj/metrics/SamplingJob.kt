@@ -19,18 +19,31 @@ class SamplingJob(
     private val intervalMs: Long,
 ) {
     fun start(scope: CoroutineScope): Job = scope.launch(Dispatchers.IO) {
-        try {
-            println("Starting sampling job")
-            while (isActive) {
+        println("Starting sampling job")
+
+        var consecutiveFailures = 0
+        while (isActive) {
+            try {
                 val item = collector.collect(results.samples.size)
                 results.samples += item
                 logger.log(LogType.SAMPLE, item)
-                delay(intervalMs.milliseconds)
+                consecutiveFailures = 0
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 单次采样失败不要让整个采样线程退出（否则整轮跑下来一个样本都没有），
+                // 但要把原因留在控制台，并记下连续失败的次数。
+                consecutiveFailures++
+                when {
+                    consecutiveFailures <= 3 -> e.printStackTrace()
+                    consecutiveFailures % 30 == 1 -> println(
+                        "sampling keeps failing (${consecutiveFailures} times in a row): " +
+                            "${e.javaClass.simpleName}: ${e.message}"
+                    )
+                }
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            e.printStackTrace()
+
+            delay(intervalMs.milliseconds)
         }
     }
 }

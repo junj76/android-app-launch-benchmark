@@ -24,12 +24,16 @@ fun parseZramMmStatResult(output: String): ZramMmStatResult? {
     if (values.size < 9)
         return null
 
-    return ZramMmStatResult(
-        origDataSize = values[0].toLong(),
-        comprDataSize = values[1].toLong(),
-        memUsedTotal = values[2].toLong(),
-        memUsedMax = values[4].toLong()
-    )
+    // 拿到的不是数字（比如设备端返回了一行报错）时返回 null，
+    // 不要让一个异常把整个采样线程干掉、导致一个样本都写不出来。
+    return runCatching {
+        ZramMmStatResult(
+            origDataSize = values[0].toLong(),
+            comprDataSize = values[1].toLong(),
+            memUsedTotal = values[2].toLong(),
+            memUsedMax = values[4].toLong()
+        )
+    }.getOrNull()
 }
 
 fun parseZramBdStatResult(output: String): ZramBdStatResult? {
@@ -41,9 +45,12 @@ fun parseZramBdStatResult(output: String): ZramBdStatResult? {
         ?: return null
     if (values.size < 3)
         return null
-    return ZramBdStatResult(
-        bdCount = values[0].toLong(),
-        bdReads = values[1].toLong(),
-        bdWrites = values[2].toLong(),
-    )
+
+    return runCatching {
+        ZramBdStatResult(
+            bdCount = values[0].toLong(),
+            bdReads = values[1].toLong(),
+            bdWrites = values[2].toLong(),
+        )
+    }.getOrNull()
 }
