@@ -175,9 +175,10 @@ val commandRegexes = mapOf(
 fun regexFindField(commandType: CommandType, resultField: ResultField, output: String) : String? {
     var regexInput = output
     if (commandType == CommandType.DUMPSYS_THERMALSERVICE) {
-        regexInput = Regex(
+        val halSection = Regex(
             """(?ms)^Current temperatures from HAL:\s*\r?\n(.*?)(?=^\S.*:\s*$|\z)"""
         ).find(output)?.groupValues?.get(1).toString()
+        regexInput = normalizeThermalZoneNames(halSection)
     }
     val regexKey = RegexKey(commandType, resultField)
     val regex = commandRegexes[regexKey] ?: return null
@@ -186,3 +187,28 @@ fun regexFindField(commandType: CommandType, resultField: ResultField, output: S
         ?.groupValues
         ?.getOrNull(1)
 }
+
+/**
+ * 温区名别名表：先把设备上实际的温区名换成 BIG/MID/LITTLE 这种通用写法，再交给上面的正则匹配。
+ *
+ * 各 ROM 的温区命名差别很大。当前测试机（EMUI 内核）用的是
+ * `cluster0/cluster1/cluster2/gpu/Battery/shell_frame`：
+ *   - cluster0 / cluster1 / cluster2 三个 CPU 簇 → LITTLE / MID / BIG
+ *   - shell_frame（dumpsys 里 type=SKIN）→ VIRTUAL-SKIN
+ *   - 该机没有 soc_therm 温区，所以 socThermTemp 会一直是 0
+ *
+ * 换机型时，把它对应的温区名加到相应列表里即可；老机型原有名字不受影响。
+ */
+private val thermalZoneAliases = listOf(
+    "LITTLE" to listOf("cluster0"),
+    "MID" to listOf("cluster1"),
+    "BIG" to listOf("cluster2"),
+    "VIRTUAL-SKIN" to listOf("shell_frame"),
+)
+
+private fun normalizeThermalZoneNames(section: String): String =
+    thermalZoneAliases.fold(section) { text, (canonicalName, deviceNames) ->
+        deviceNames.fold(text) { acc, deviceName ->
+            acc.replace("mName=$deviceName,", "mName=$canonicalName,")
+        }
+    }
