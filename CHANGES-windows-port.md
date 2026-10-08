@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 1 | `device/adb/AdbCommands.kt` | `/bin/bash` → `powershell.exe`；root 通路改为 `/eng/system/xbin/su 0 sh`；退出码透传；输出按 UTF-8；失败命令留档 |
 | 2 | `device/logcat/LogcatProcess.kt` | `grep --line-buffered -iE` → PowerShell `Select-String`（等价于忽略大小写的整行过滤） |
-| 3 | `output/logging/CommandDiagnostics.kt`（新增） | 失败/空输出/解析失败的命令写进 `command.log`，去重并在结尾汇总次数 |
+| 3 | `output/logging/CommandDiagnostics.kt`（新增） | 失败命令、读命令的空输出、解析失败写进 `command.log`，去重并在结尾汇总次数（`logcat -c`、`swapoff` 等静默成功的写命令不记） |
 | 4 | `output/logging/Logger.kt` | 每条日志立即 `flush()`，程序中途崩溃也不丢日志 |
 | 5 | `metrics/SamplingJob.kt` | 单次采样失败不再终止整个采样线程（前 3 次打堆栈，之后降频提示） |
 | 6 | `metrics/MetricsCollector.kt` | vmstat / 温度 / zram mm_stat 解析不出内容时，把原始回显写进 `command.log` |
@@ -80,7 +80,7 @@ cd "D:\桌面\NNSS\swap项目\统计任务\android_app_launch_test"
 | `launch.log` / `launch.csv` | 每次启动一行：应用、LaunchState、TotalTime/WaitTime、Status |
 | `sample.log` / `sample.csv` | 每 `sampleIntervalMs` 一行：meminfo、PSI、vmstat、温度、zRAM/zSwap |
 | `logcat.log` | 低内存杀手击杀行（行数即 lmkdCnt） |
-| `command.log` | 仅在出问题时生成：失败/空输出的命令及其原始回显 |
+| `command.log` | 仅在出问题时生成：失败命令、本该有输出却为空的读命令、解析失败内容的原始回显 |
 
 ## 五、怎么改测试内容
 

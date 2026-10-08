@@ -15,6 +15,24 @@ import java.util.concurrent.ConcurrentHashMap
 object CommandDiagnostics {
     private val counts = ConcurrentHashMap<Pair<String, String>, Int>()
 
+    /**
+     * 预期"一定有输出"的命令前缀：只有这些命令出现"退出码 0 但没输出"才算异常。
+     *
+     * 其余命令（`logcat -c`、`swapoff`、`swapon`、`mkswap`、`chmod`、`mount`、`echo`、
+     * `reboot`、`input keyevent`、`wm dismiss-keyguard` …）本来就是静默成功，
+     * 记进来只会让 command.log 变成噪声。
+     */
+    private val outputExpectedPrefixes = listOf(
+        "cat ",
+        "dumpsys ",
+        "vmstat",
+        "am start",
+        "logcat -d",
+        "getprop ",
+        "pm ",
+        "cmd ",
+    )
+
     @Volatile
     private var outputFile: File? = null
 
@@ -39,12 +57,12 @@ object CommandDiagnostics {
     /**
      * 命令执行完后调用：退出码非 0，或者退出码为 0 但一个字都没输出时记一笔。
      *
-     * "看起来成功、其实没拿到数据"是这套 adb 调用最容易被忽略的失败方式，
-     * 所以两种情况都要留档。
+     * "看起来成功、其实没拿到数据"是这套 adb 调用最容易被忽略的失败方式，所以要对
+     * [outputExpectedPrefixes] 里的读命令做空输出告警；静默成功的写命令不记（见该列表说明）。
      */
     fun recordCommandProblem(command: String, exitCode: Int, output: String) {
         val failed = exitCode != 0
-        val emptyOutput = output.isBlank()
+        val emptyOutput = output.isBlank() && outputExpectedPrefixes.any { command.startsWith(it) }
         if (!failed && !emptyOutput) return
 
         if (failed) {
