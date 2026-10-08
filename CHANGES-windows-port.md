@@ -29,6 +29,7 @@
 | 11 | `.gitignore` | 增加 `run.log` / `run-*.log` |
 | 12 | `test.ps1`（新增） | Windows 版批跑脚本（对应同事的 `test.sh`） |
 | 13 | `gradle/wrapper/gradle-wrapper.properties` | 单独提交：Gradle 发行版改用腾讯镜像（仅本机网络便利，可随时还原） |
+| 14 | `device/swap/SwapController.kt`、`cli/AppCommand.kt`、`config/ExperimentConfig.kt` | flash swap 防写死保护：创建文件前检查 `/data` 剩余空间；新增 `-s/--flash-swap-size-mb`；本地默认值 4096MB → 1024MB |
 
 ## 三、Windows 上的关键实现细节（都是踩过的坑）
 
@@ -126,7 +127,38 @@ git rebase origin/main                     # 冲突：改文件 → git add → 
 2. `.\gradlew.bat run --args="-t 1 -a 0"` 跑一小轮；
 3. 看 `command.log` 是否为空、`sample.csv` 的温度/vmstat 是否有值、`launch.log` 是否有 LaunchState。
 
-## 七、已知限制（设备侧，非代码问题）
+## 七、flash swap 的注意事项（真机可能死机）
+
+2026-10-08 的一次 `-t 2`（flash swap）实测中，手机在 swap 初始化阶段直接死机。当时的运行目录
+`logs/20261008_182926_middle_flash_swap/` 里只有 `summary.txt` 一行 `=== Only Flash Swap ===`，
+`command.log` 都没生成 —— 说明它卡在 `dd` / `mkswap` / `swapon` 这几步，
+而公司上游默认的 swap 文件是 **4096MB**（旧版扁平布局时期是 1024MB，能跑通）。
+
+原因是把几 GB 的零写进 `/data`，一旦数据分区被写满，系统没有可写空间就会卡死；
+另外在慢速 flash 上做大 swap，本身就容易把系统拖进 I/O 停顿。
+
+现在的保护措施：
+
+1. `enableFlashSwap()` 在 `dd` 之前会执行 `df -Pk /data`，要求
+   `可用空间 >= swap 文件大小 + 512MB`，不满足就直接报错退出（**不会再写死手机**）；
+2. 默认大小本地改为 1024MB，可用 `-s` 覆盖：`.\gradlew.bat run --args="-t 2 -a 0 -s 1024"`；
+3. 运行日志目录名带 `_flash_swap` 后缀，方便回溯。
+
+如果手机真的死机了，恢复与清理：
+
+```powershell
+# 长按电源键强制重启（或 adb 还能响应时：adb root; adb reboot）
+adb devices
+adb shell /eng/system/xbin/su 0 df -h /data                        # 看剩余空间
+adb shell /eng/system/xbin/su 0 ls -lh /data/per_boot/flash.swap    # 4GB 文件可能还在
+adb shell /eng/system/xbin/su 0 cat /proc/swaps                     # 重启后 swap 已重置
+adb shell /eng/system/xbin/su 0 rm -f /data/per_boot/flash.swap     # 不再需要就删掉
+
+# 排查当时的 I/O / OOM 线索
+adb shell /eng/system/xbin/su 0 dmesg | Select-String "I/O error|mmc|ufs|oom|Out of memory|lowmemorykiller" | Select-Object -Last 30
+```
+
+## 八、已知限制（设备侧，非代码问题）
 
 - 本机内核没有 zRAM writeback → `/sys/block/zram0/bd_stat` 不存在，`zramBd*` 恒为 0；
 - `/sys/kernel/debug/zswap/*` 只有 `-t 3`（会挂 debugfs 并打开 zswap）时才有数据；

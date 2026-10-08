@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.int
 import com.junj.config.ExperimentConfig
+import com.junj.config.DEFAULT_FLASH_SWAP_DEVICE_SIZE_MB
 import com.junj.domain.app.AppSetType
 import com.junj.output.logging.getTimeStamp
 import java.io.File
@@ -53,6 +54,18 @@ class AppCommand : CliktCommand(name = "android-app-launch-test") {
         help = "Optional log output path",
     )
 
+    val flashSwapSizeMb: Int? by option(
+        "-s",
+        "--flash-swap-size-mb",
+        help = "flash swap file size in MB (default: $DEFAULT_FLASH_SWAP_DEVICE_SIZE_MB)",
+    )
+        .int()
+        .validate {
+            require(it in 64..16_384) {
+                "flash-swap-size-mb must be between 64 and 16384 (got $it)"
+            }
+        }
+
     override fun run() = Unit
 }
 
@@ -73,5 +86,6 @@ fun parseArgs(args: Array<String>): ExperimentConfig {
         appSetNumber = command.appSetNumber,
         timestamp = timestamp,
         outputDirectory = File("../logs/$timestamp"),
+        flashSwapDeviceSizeMb = command.flashSwapSizeMb ?: DEFAULT_FLASH_SWAP_DEVICE_SIZE_MB,
     )
 }
