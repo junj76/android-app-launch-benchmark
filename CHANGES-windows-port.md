@@ -129,30 +129,44 @@ git rebase origin/main                     # 冲突：改文件 → git add → 
 
 ## 七、flash swap 的注意事项（真机可能死机）
 
-2026-10-08 的一次 `-t 2`（flash swap）实测中，手机在 swap 初始化阶段直接死机。当时的运行目录
+2026-10-08 的一次 `-t 2`（flash swap）实测中，手机在 swap 初始化阶段直接死机/重启。当时的运行目录
 `logs/20261008_182926_middle_flash_swap/` 里只有 `summary.txt` 一行 `=== Only Flash Swap ===`，
-`command.log` 都没生成 —— 说明它卡在 `dd` / `mkswap` / `swapon` 这几步，
-而公司上游默认的 swap 文件是 **4096MB**（旧版扁平布局时期是 1024MB，能跑通）。
+`command.log` 都没生成 —— 说明它停在 `dd` / `chmod` / `mkswap` / `swapon` 这几步。
 
-原因是把几 GB 的零写进 `/data`，一旦数据分区被写满，系统没有可写空间就会卡死；
-另外在慢速 flash 上做大 swap，本身就容易把系统拖进 I/O 停顿。
+随后在真机（华为 HBN-AL00 / EMUI，`/data` 为 f2fs、当时剩余 184GB）上逐条手动验证，结论是：
+
+**命令序列本身没问题，问题出在 upstream 选的文件路径 `/data/per_boot/flash.swap`。**
+
+| 手动验证 | 结果 |
+| --- | --- |
+| `/data/per_boot`：`dd` 256MB → `chmod` → `mkswap` | `mkswap` 时 adb 直接掉线、**手机重启**（`uptime` 归零、`/data/per_boot` 被清空、zram 自动恢复）—— 与自动跑 4GB 时的现象一致 |
+| `/data/local/tmp`：`dd` 256MB → `sync` → `mkswap` → `swapon` | 全部 exit=0，`/proc/swaps` 出现 `file` 类型 swap |
+| `/data/local/tmp`：按代码顺序 `swapoff zram → dd 1024MB → chmod → mkswap → swapon` | 全部 exit=0；`mkswap` 输出 `Swapspace size: 1048572k`，`/proc/swaps` 显示 `/data/local/tmp/flash.swap file 1048572`，`free -m` 显示 `Swap: 1023MB` |
+| `df -Pk /data` | `/dev/block/sdd88 ... Available 193094800KB`（≈184GB），空间充足，**不是"写满 /data"导致的死机** |
+
+也就是说：`/data/per_boot` 是这台机器上特殊的分区目录（每次开机被清空），在那里做 `mkswap` 会触发整机重启；
+把 swap 文件放到普通目录即可正常工作。
 
 现在的保护措施：
 
-1. `enableFlashSwap()` 在 `dd` 之前会执行 `df -Pk /data`，要求
+1. **路径改为 `/data/local/tmp/flash.swap`**（`SwapController.kt` 的 `FLASH_SWAP_FILE`），这是实测可用的路径；
+2. `enableFlashSwap()` 在 `dd` 之前会执行 `df -Pk /data`，要求
    `可用空间 >= swap 文件大小 + 512MB`，不满足就直接报错退出（**不会再写死手机**）；
-2. 默认大小本地改为 1024MB，可用 `-s` 覆盖：`.\gradlew.bat run --args="-t 2 -a 0 -s 1024"`；
-3. 运行日志目录名带 `_flash_swap` 后缀，方便回溯。
+3. `swapon` 之后会检查 `/proc/swaps` 里有没有这个文件，没有就直接报错中止
+   （upstream 不检查 mkswap/swapon 的退出码，否则整轮实验会悄悄跑成"没有 swap"）；
+4. 默认大小本地改为 1024MB，可用 `-s` 覆盖：`.\gradlew.bat run --args="-t 2 -a 0 -s 1024"`；
+5. 运行日志目录名带 `_flash_swap` 后缀，方便回溯。
 
-如果手机真的死机了，恢复与清理：
+如果手机又死机了，恢复与清理：
 
 ```powershell
 # 长按电源键强制重启（或 adb 还能响应时：adb root; adb reboot）
 adb devices
 adb shell /eng/system/xbin/su 0 df -h /data                        # 看剩余空间
-adb shell /eng/system/xbin/su 0 ls -lh /data/per_boot/flash.swap    # 4GB 文件可能还在
-adb shell /eng/system/xbin/su 0 cat /proc/swaps                     # 重启后 swap 已重置
-adb shell /eng/system/xbin/su 0 rm -f /data/per_boot/flash.swap     # 不再需要就删掉
+adb shell /eng/system/xbin/su 0 cat /proc/swaps                     # 重启后 zram 自动恢复
+adb shell /eng/system/xbin/su 0 ls -lh /data/local/tmp/flash.swap   # 大文件会留在普通目录里
+adb shell /eng/system/xbin/su 0 swapoff /data/local/tmp/flash.swap  # 不再需要就关掉并删除
+adb shell /eng/system/xbin/su 0 rm -f /data/local/tmp/flash.swap
 
 # 排查当时的 I/O / OOM 线索
 adb shell /eng/system/xbin/su 0 dmesg | Select-String "I/O error|mmc|ufs|oom|Out of memory|lowmemorykiller" | Select-Object -Last 30

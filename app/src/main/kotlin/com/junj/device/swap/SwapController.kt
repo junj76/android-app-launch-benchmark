@@ -5,8 +5,16 @@ import com.junj.device.adb.runAdbRootShellCommand
 import com.junj.output.logging.Logger
 import com.junj.output.logging.LogType
 
-/** flash swap 文件路径（所有相关命令共用）。 */
-const val FLASH_SWAP_FILE = "/data/per_boot/flash.swap"
+/**
+ * flash swap 文件路径（所有相关命令共用）。
+ *
+ * 注意：上游原本用 `/data/per_boot/flash.swap`，但当前测试机（华为 HBN-AL00 / EMUI）
+ * 在这个目录下执行 mkswap 会让整机直接重启 —— 实测两次（一次 4GB 的自动跑、一次 256MB 的手动跑）
+ * 都是 adb 掉线、手机重启、`/data/per_boot` 被清空。
+ * 换成普通目录 `/data/local/tmp/` 后，dd → chmod → mkswap → swapon 全流程实测通过
+ * （`/proc/swaps` 里能看到 file 类型的 swap）。
+ */
+const val FLASH_SWAP_FILE = "/data/local/tmp/flash.swap"
 
 /**
  * 创建 flash swap 文件前，要求 /data 在 swap 文件之外至少还剩这么多空间（MB）。
@@ -63,7 +71,15 @@ fun enableFlashSwap(flashSwapDeviceSizeMb: Int) {
     runAdbRootShellCommand("chmod 600 $FLASH_SWAP_FILE")
     runAdbRootShellCommand("mkswap $FLASH_SWAP_FILE")
     runAdbRootShellCommand("swapon $FLASH_SWAP_FILE")
-    println(runAdbRootShellCommand("cat /proc/swaps").output)
+
+    // mkswap/swapon 失败时 upstream 是不检查退出码的，整轮实验会悄悄跑成"没有 swap"，
+    // 所以这里用 /proc/swaps 确认 swap 真的生效了，没生效就直接报错中止。
+    val swaps = runAdbRootShellCommand("cat /proc/swaps")
+    println(swaps.output)
+    check(swaps.output.contains(FLASH_SWAP_FILE)) {
+        "flash swap 没有生效：$FLASH_SWAP_FILE 不在 /proc/swaps 里。" +
+            "请手动执行 dd / chmod / mkswap / swapon 排查（详见 CHANGES-windows-port.md 第七节）。"
+    }
 }
 
 fun enableZswap() {
