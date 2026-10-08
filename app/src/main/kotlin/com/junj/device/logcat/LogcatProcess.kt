@@ -1,11 +1,9 @@
-package com.junj.utils
+package com.junj.device.logcat
 
-import com.junj.logcatFile
-import com.junj.timeStamp
+import com.junj.device.adb.runAdbRootShellCommand
 import java.io.File
 
-fun startLogcatProcess(): Process {
-    logcatFile = File("../logs/$timeStamp/logcat.log")
+fun startLogcatProcess(logcatFile: File): Process {
     runAdbRootShellCommand("logcat -c")
 
     return ProcessBuilder(

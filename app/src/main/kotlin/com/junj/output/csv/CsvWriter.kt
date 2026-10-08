@@ -1,17 +1,20 @@
-package com.junj.utils
+package com.junj.output.csv
 
-import com.junj.sampleIntervalMs
-import com.junj.timeStamp
+import com.junj.domain.ExperimentResults
+import com.junj.domain.launch.LaunchApplicationItem
+import com.junj.domain.metrics.SamplingItem
+import com.junj.output.ExperimentOutputPaths
 import java.io.File
 
-fun saveCsv() {
+fun saveCsv(results: ExperimentResults, output: ExperimentOutputPaths, sampleIntervalMs: Long) {
     saveLaunchResultsToCsv(
-        launchApplicationResult,
-        File("../logs/$timeStamp/launch.csv")
+        results.launches,
+        output.launchCsv,
     )
     saveSampleResultsToCsv(
-        sampleResults,
-        File("../logs/$timeStamp/sample.csv")
+        results.samples,
+        output.sampleCsv,
+        sampleIntervalMs,
     )
 }
 
@@ -73,7 +76,11 @@ fun escapeCsv(value: String): String {
     }
 }
 
-fun saveSampleResultsToCsv(results: List<SamplingItem>, outputFile: File, ) {
+fun saveSampleResultsToCsv(
+    results: List<SamplingItem>,
+    outputFile: File,
+    sampleIntervalMs: Long,
+) {
     outputFile.parentFile?.mkdirs()
 
     outputFile.bufferedWriter(Charsets.UTF_8).use { writer ->

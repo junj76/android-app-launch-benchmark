@@ -1,4 +1,4 @@
-package com.junj.utils
+package com.junj.metrics.parser
 
 enum class CommandType {
     AM_START,

@@ -1,4 +1,4 @@
-package com.junj.utils
+package com.junj.metrics.parser
 
 data class VmstatResult(
     val vmstatR: Int,

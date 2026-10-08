@@ -1,4 +1,7 @@
-package com.junj.utils
+package com.junj.device.ui
+
+import com.junj.device.adb.runAdbRootShellCommand
+import com.junj.domain.app.ApplicationInfo
 
 private const val DEFAULT_MAX_BACK_PRESSES = 10
 private const val PAGE_CHANGE_WAIT_MS = 1_000L

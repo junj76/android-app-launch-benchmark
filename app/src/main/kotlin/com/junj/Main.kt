@@ -1,112 +1,74 @@
 package com.junj
 
-import com.junj.utils.*
-import com.junj.utils.globalAppInfos
-import java.lang.Thread.sleep
+import com.junj.cli.parseArgs
+import com.junj.device.adb.ProcessAdbExecutor
+import com.junj.device.lifecycle.rebootDevice
+import com.junj.device.logcat.startLogcatProcess
+import com.junj.device.process.destroyProcessTree
+import com.junj.device.swap.initSwapByType
+import com.junj.domain.ExperimentResults
+import com.junj.domain.app.appNameSet
+import com.junj.domain.app.globalAppInfos
+import com.junj.experiment.ExperimentRunner
+import com.junj.metrics.MetricsCollector
+import com.junj.metrics.SamplingJob
+import com.junj.output.ExperimentOutputPaths
+import com.junj.output.csv.saveCsv
+import com.junj.output.logging.LogType
+import com.junj.output.logging.Logger
+import com.junj.output.reporting.SummaryReporter
+import com.junj.output.reporting.calculateSummary
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
-import java.io.File
-
-fun createLogAndResultFiles() {
-    File("../logs/$timeStamp").mkdir()
-    File("../logs/$timeStamp/sample.log").createNewFile()
-    File("../logs/$timeStamp/launch.log").createNewFile()
-    File("../logs/$timeStamp/sample.csv").createNewFile()
-    File("../logs/$timeStamp/launch.csv").createNewFile()
-    File("../logs/$timeStamp/summary.txt").createNewFile()
-}
-
-private fun sleepUntil(deadlineNs: Long) {
-    while (true) {
-        val remainingNs = deadlineNs - System.nanoTime()
-        if (remainingNs <= 0) return
-        val millis = remainingNs / 1_000_000L
-        val nanos = (remainingNs % 1_000_000L).toInt()
-        sleep(millis, nanos)
-    }
-}
-
-fun runWarmUpRound() {
-    println("===Warm up round START!===")
-    for (app in appInfos) {
-        println(runAdbShellCommand("""am start -W -n ${app.componentName}""").output)
-        sleep(15000)
-    }
-    println("===Warm up round END!===")
-}
-
-fun runTestRound(round: Int) {
-    val launchIntervalMs = 15_000L
-    val collectDelayMs = 10_000L
-    for ((index, app) in appInfos.withIndex()) {
-        val launchStartNs = System.nanoTime()
-        val nextLaunchNs = launchStartNs + launchIntervalMs * 1_000_000L
-        runAdbRootShellCommand("""dumpsys gfxinfo ${app.packageName} reset""")
-        val amStartCommandResult = runAdbShellCommand("""am start -W -n ${app.componentName}""")
-        sleepUntil(launchStartNs + collectDelayMs * 1_000_000L)
-//        simulateUserClickEvents(app)
-//        val dumpsysMemInfoCommandResult = runAdbRootShellCommand("""dumpsys meminfo ${app.packageName}""")
-//        val dumpsysGfxInfoCommandResult = runAdbRootShellCommand("""dumpsys gfxinfo ${app.packageName}""")
-
-        launchApplicationResult += LaunchApplicationItem(
-            amStartRound = round,
-            amStartAppName = app.name,
-            amStartLaunchState = regexFindField(CommandType.AM_START, ResultField.LAUNCH_STATE, amStartCommandResult.output) ?: "",
-            amStartTotalTime = regexFindField(CommandType.AM_START, ResultField.TOTAL_TIME, amStartCommandResult.output)?.toLongOrNull() ?: 0,
-            amStartWaitTime = regexFindField(CommandType.AM_START, ResultField.WAIT_TIME, amStartCommandResult.output)?.toLongOrNull() ?: 0,
-            amStartStatus = regexFindField(CommandType.AM_START, ResultField.STATUS, amStartCommandResult.output) ?: "",
-
-            dumpsysGfxInfoJankyFrames = 0.0, //regexFindField(CommandType.DUMPSYS_GFXINFO, ResultField.JANKY_FRAMES_PCT, dumpsysGfxInfoCommandResult.output)?.toDoubleOrNull() ?: 0.0,
-            dumpsysGfxInfoP50RenderLat =  0, // regexFindField(CommandType.DUMPSYS_GFXINFO, ResultField.P50_RENDER_LAT, dumpsysGfxInfoCommandResult.output)?.toIntOrNull() ?: 0,
-            dumpsysGfxInfoP90RenderLat = 0, //regexFindField(CommandType.DUMPSYS_GFXINFO, ResultField.P90_RENDER_LAT, dumpsysGfxInfoCommandResult.output)?.toIntOrNull() ?: 0,
-            dumpsysGfxInfoP95RenderLat = 0, // regexFindField(CommandType.DUMPSYS_GFXINFO, ResultField.P95_RENDER_LAT, dumpsysGfxInfoCommandResult.output)?.toIntOrNull() ?: 0,
-            dumpsysGfxInfoP99RenderLat = 0, //regexFindField(CommandType.DUMPSYS_GFXINFO, ResultField.P99_RENDER_LAT, dumpsysGfxInfoCommandResult.output)?.toIntOrNull() ?: 0,
-
-            dumpsysMemInfoTotalPss =  0, //regexFindField(CommandType.DUMPSYS_MEMINFO, ResultField.TOTAL_PSS, dumpsysMemInfoCommandResult.output)?.toIntOrNull() ?: 0,
-        )
-        logger.log(LogType.LAUNCH, launchApplicationResult.getOrNull(index + appInfos.size * (round -1)))
-        sleepUntil(nextLaunchNs)
-    }
-}
-
-const val testRoundCount = 5
-const val sampleIntervalMs = 10_000
-const val flashSwapDevSize = 1024 * 4 // in MB
-
-var type: Int = -1
-var appSetNumber: Int = -1
-lateinit var timeStamp: String
-lateinit var logcatFile: File
-lateinit var logger: Logger
-lateinit var appInfos: List<ApplicationInfo>
 
 fun main(args: Array<String>) = runBlocking {
     rebootDevice()
-    timeStamp = getTimeStamp()
-    parseArgs(args)
-    createLogAndResultFiles()
-    logger = Logger()
-    initSwapByType(type)
-    appInfos = globalAppInfos.filter { it.name in appNameSet[appSetNumber] }
+    val config = parseArgs(args)
+    val output = ExperimentOutputPaths(config.outputDirectory)
+    output.create()
+    val logger = Logger(output.directory)
+    val results = ExperimentResults()
+    val apps = globalAppInfos.filter { it.name in appNameSet[config.appSetNumber] }
 
-//    runWarmUpRound()
+    initSwapByType(config.swapType, config.flashSwapDeviceSizeMb, logger)
 
+    val runner = ExperimentRunner(
+        adb = ProcessAdbExecutor,
+        apps = apps,
+        results = results,
+        logger = logger,
+        config = config,
+    )
     val testStartNs = System.nanoTime()
-    val samplingJob = startSamplingJob()
-    val logcatProcess = startLogcatProcess()
+    val samplingJob = SamplingJob(
+        collector = MetricsCollector(ProcessAdbExecutor),
+        results = results,
+        logger = logger,
+        intervalMs = config.sampleIntervalMs,
+    ).start(this)
+    val logcatProcess = startLogcatProcess(output.logcat)
 
     try {
-        for (i in 1..testRoundCount) {
-            runTestRound(i)
+        for (round in 1..config.testRoundCount) {
+            runner.runTestRound(round)
         }
     } finally {
-        val testEndNs = System.nanoTime()
-        val elapsedNs = testEndNs - testStartNs
+        val elapsedNs = System.nanoTime() - testStartNs
         samplingJob.cancelAndJoin()
         destroyProcessTree(logcatProcess)
-        printStatistics()
+
+        val lmkdCount = output.logcat.useLines { lines -> lines.count() }
+        val summary = calculateSummary(
+            launches = results.launches,
+            samples = results.samples,
+            appCount = apps.size,
+            testRoundCount = config.testRoundCount,
+            lmkdCount = lmkdCount,
+            logsPath = "logs/${config.timestamp}/*.log",
+        )
+        SummaryReporter(logger).report(summary)
         logger.log(LogType.SUMMARY, "Test round runtime: ${elapsedNs / 1_000_000_000}s")
-        saveCsv()
+        saveCsv(results, output, config.sampleIntervalMs)
         logger.close()
     }
 }
