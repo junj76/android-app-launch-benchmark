@@ -32,7 +32,12 @@ class Logger(outputDirectory: File) : Closeable {
     fun log(type: LogType, message: Any?) {
         val text = message.toString()
         println(text)
-        writers.getValue(type).appendLine(text)
+        writers.getValue(type).apply {
+            appendLine(text)
+            // 每条都落盘：日志量很小（采样 10s 一条），但程序一旦中途崩溃，
+            // 不 flush 的话整个文件都是空的，等于白跑。
+            flush()
+        }
     }
 
     override fun close() {
