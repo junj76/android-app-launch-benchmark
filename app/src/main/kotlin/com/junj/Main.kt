@@ -29,7 +29,7 @@ fun main(args: Array<String>) = runBlocking {
     output.create()
     val logger = Logger(output.directory)
     val results = ExperimentResults()
-    val apps = globalAppInfos
+    var apps = globalAppInfos
         .filter { it.name in appNameSet[config.appSetNumber] }
         .shuffled(Random(config.randomSeed))
     logger.log(
@@ -58,6 +58,7 @@ fun main(args: Array<String>) = runBlocking {
     try {
         for (round in 1..config.testRoundCount) {
             runner.runTestRound(round)
+            apps = apps.reversed()
         }
     } finally {
         val elapsedNs = System.nanoTime() - testStartNs
