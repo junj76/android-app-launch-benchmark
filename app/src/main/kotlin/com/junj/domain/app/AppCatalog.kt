@@ -10,8 +10,8 @@ val appNameSet = arrayOf(
         "xiecheng", "meituan", "netdisk", "kuake", "wps", "doubao", "gdmap",
     ),
     arrayOf(
-        "wechat", "weibo", "zhihu", "qqmusic", "dianping",
-        "xiecheng", "jd", "meituan", "netdisk", "kuake", "wps", "doubao", "gdmap",
+        "douyin", "bilibili", "gdmap", "dianping", "jd", "meituan", "xiecheng",
+        "wps", "doubao", "qqmusic", "netdisk", "weibo", "wechat", "zhihu", "kuaishou", "kuake",
     ),
 )
 

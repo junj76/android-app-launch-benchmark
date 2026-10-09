@@ -20,6 +20,7 @@ import com.junj.output.reporting.SummaryReporter
 import com.junj.output.reporting.calculateSummary
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlin.random.Random
 
 fun main(args: Array<String>) = runBlocking {
     rebootDevice()
@@ -28,7 +29,13 @@ fun main(args: Array<String>) = runBlocking {
     output.create()
     val logger = Logger(output.directory)
     val results = ExperimentResults()
-    val apps = globalAppInfos.filter { it.name in appNameSet[config.appSetNumber] }
+    val apps = globalAppInfos
+        .filter { it.name in appNameSet[config.appSetNumber] }
+        .shuffled(Random(config.randomSeed))
+    logger.log(
+        LogType.SUMMARY,
+        "randomSeed=${config.randomSeed}, appOrder=${apps.joinToString { it.name }}",
+    )
 
     initSwapByType(config.swapType, config.flashSwapDeviceSizeMb, logger)
 
@@ -39,7 +46,6 @@ fun main(args: Array<String>) = runBlocking {
         logger = logger,
         config = config,
     )
-    val testStartNs = System.nanoTime()
     val samplingJob = SamplingJob(
         collector = MetricsCollector(ProcessAdbExecutor),
         results = results,
@@ -48,6 +54,7 @@ fun main(args: Array<String>) = runBlocking {
     ).start(this)
     val logcatProcess = startLogcatProcess(output.logcat)
 
+    val testStartNs = System.nanoTime()
     try {
         for (round in 1..config.testRoundCount) {
             runner.runTestRound(round)
@@ -61,6 +68,7 @@ fun main(args: Array<String>) = runBlocking {
         val summary = calculateSummary(
             launches = results.launches,
             samples = results.samples,
+            survivals = results.survivals,
             appCount = apps.size,
             testRoundCount = config.testRoundCount,
             lmkdCount = lmkdCount,

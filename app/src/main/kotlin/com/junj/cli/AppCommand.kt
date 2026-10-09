@@ -1,6 +1,7 @@
 package com.junj.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.options.validate
@@ -53,6 +54,14 @@ class AppCommand : CliktCommand(name = "android-app-launch-test") {
         help = "Optional log output path",
     )
 
+    val randomSeed: Int by option(
+        "-s",
+        "--seed",
+        help = "Random seed number for app launch"
+    )
+        .int()
+        .default(0)
+
     override fun run() = Unit
 }
 
@@ -71,6 +80,7 @@ fun parseArgs(args: Array<String>): ExperimentConfig {
     return ExperimentConfig(
         swapType = command.type,
         appSetNumber = command.appSetNumber,
+        randomSeed = command.randomSeed,
         timestamp = timestamp,
         outputDirectory = File("../logs/$timestamp"),
     )

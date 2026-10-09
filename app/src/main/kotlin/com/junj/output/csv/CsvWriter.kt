@@ -3,6 +3,7 @@ package com.junj.output.csv
 import com.junj.domain.ExperimentResults
 import com.junj.domain.launch.LaunchApplicationItem
 import com.junj.domain.metrics.SamplingItem
+import com.junj.domain.survival.AppSurvivalResult
 import com.junj.output.ExperimentOutputPaths
 import java.io.File
 
@@ -16,6 +17,49 @@ fun saveCsv(results: ExperimentResults, output: ExperimentOutputPaths, sampleInt
         output.sampleCsv,
         sampleIntervalMs,
     )
+    saveSurvivalResultsToCsv(
+        results.survivals,
+        output.survivalCsv,
+    )
+}
+
+fun saveSurvivalResultsToCsv(
+    results: List<AppSurvivalResult>,
+    outputFile: File,
+) {
+    outputFile.parentFile?.mkdirs()
+
+    outputFile.bufferedWriter(Charsets.UTF_8).use { writer ->
+        writer.appendLine(
+            listOf(
+                "round",
+                "launchPosition",
+                "appName",
+                "packageName",
+                "launchedPid",
+                "pidAtRoundEnd",
+                "originalProcessAlive",
+                "appCurrentlyRunning",
+            ).joinToString(",")
+        )
+
+        results.forEach { item ->
+            writer.appendLine(
+                listOf(
+                    item.round,
+                    item.launchPosition,
+                    item.appName,
+                    item.packageName,
+                    item.launchedPid ?: "",
+                    item.pidAtRoundEnd ?: "",
+                    item.originalProcessAlive,
+                    item.appCurrentlyRunning,
+                ).joinToString(",") { value ->
+                    escapeCsv(value.toString())
+                }
+            )
+        }
+    }
 }
 
 fun saveLaunchResultsToCsv(results: List<LaunchApplicationItem>, outputFile: File, ) {
