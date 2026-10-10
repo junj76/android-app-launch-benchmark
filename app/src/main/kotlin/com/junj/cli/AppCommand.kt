@@ -73,6 +73,12 @@ fun parseArgs(args: Array<String>): ExperimentConfig {
             AppSetType.MIDDLE.code -> append("_middle")
             AppSetType.HEAVY.code -> append("_heavy")
         }
+        when(command.type) {
+            0 -> append("_noSwap")
+            1 -> append("_onlyZram")
+            2 -> append("_flashSwap")
+            3 -> append("_zswap")
+        }
         command.logPath?.let { append("_$it") }
     }
     val timestamp = getTimeStamp() + suffix

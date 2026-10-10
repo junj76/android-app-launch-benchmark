@@ -29,15 +29,6 @@ class ExperimentRunner(
         val launchedPid: Long?,
     )
 
-    fun runWarmUpRound() {
-        println("===Warm up round START!===")
-        for (app in apps) {
-            println(adb.shell("am start -W -n ${app.componentName}").output)
-            sleep(15_000)
-        }
-        println("===Warm up round END!===")
-    }
-
     fun runTestRound(round: Int) {
         val launchedProcesses = ArrayList<LaunchedAppProcess>()
         for ((index, app) in apps.withIndex()) {
